@@ -1,24 +1,32 @@
-# apptestkey
+什么情况下Vue使用index作为key会出问题
+背景
+在动态删除v-for渲染的列表的过程中，如果key指定为index，则可能出现渲染错乱的问题。比如，你的列表有两行，你明明删了第一行，结果却是第二行消失了。
 
-## Project setup
-```
-yarn install
-```
+解析
+问题源于key的重复，假设你的列表有两行，当你删了第一行，那么第二行的key就变成了第一行的key，这两个key是相同的。基于VirtualDOM的库会把key相同的组件认作同一个组件，因而不会去更新视图。
 
-### Compiles and hot-reloads for development
-```
-yarn serve
-```
+也就是说，你删了第一行，本来预期的第二行变成了第一行，结果变成因为key相同，最后第一行保持不变，反而是第二行消失了。
 
-### Compiles and minifies for production
-```
-yarn build
-```
 
-### Lints and fixes files
-```
-yarn lint
-```
 
-### Customize configuration
-See [Configuration Reference](https://cli.vuejs.org/config/).
+为什么我没有复现
+大部分时候我们即使使用index作为key，不会复现这个问题，这好像与我们上述分析不符。但是事实上，“使用index作为key并且不会出问题”这种场景，其实过程是这样的：
+
+第一步：通过修改数据删除第一行，数据变化引起vue去更新视图，更新的过程中发现key相同，最终第一行保持不变，反而是第二行消失。这是第一次render。
+
+第二步：第一行的VirtualDOM的确没有变，但是第一行的组件的props变了，由原来第一行的props，变成了第二行的props，由于props变化，第一行的组件需要使用新的props更新视图，最终第一行变成了第二行的样子。这是第二次render。
+
+也就是说，“使用index作为key并且不会出问题”这种场景，是因为render了两次，才最终达成了视图的正确更新。
+
+那什么时候可以复现
+如果你去删除第一行的过程中，只会触发一次render，那么就会复现问题。也就是说，如果每一行的组件，不依赖于任何“响应式”数据，那么就不会有第二次render，问题就能复现！
+
+上述两种情况的DEMO：codesandbox.io/s/wonderful…
+
+特殊情况：如果列表中的组件，是简单的文本节点，文本节点没有props，那么它会不会复现问题呢？
+
+答案是“不会”，Vue的Diff过程对文本节点有特殊处理，不管key一不一样，都会用“新的文本节点”覆盖“旧的文本节点”。
+
+结论
+在使用非文本节点的组件，且这个组件没有依赖于响应式的props，那么此时对于列表的删除操作会导致视图错乱。
+
